@@ -229,12 +229,24 @@ def test(data_name, model_feature, model_structure, score_func, evaluator_hit, e
     pos_test_pred, neg_test_pred = torch.flatten(pos_test_pred), torch.flatten(neg_test_pred)
     pos_valid_pred, neg_valid_pred = torch.flatten(pos_valid_pred), torch.flatten(neg_valid_pred)
 
+    # AUC and AP
+    val_pred = torch.cat([pos_valid_pred, neg_valid_pred])
+    val_true = torch.cat([torch.ones_like(pos_valid_pred), torch.zeros_like(neg_valid_pred)])
+    test_pred_all = torch.cat([pos_test_pred, neg_test_pred])
+    test_true = torch.cat([torch.ones_like(pos_test_pred), torch.zeros_like(neg_test_pred)])
+    val_auc_res = evaluate_auc(val_pred, val_true)
+    test_auc_res = evaluate_auc(test_pred_all, test_true)
+    result = {
+        'AUC': (0, val_auc_res['AUC'], test_auc_res['AUC']),
+        'AP': (0, val_auc_res['AP'], test_auc_res['AP'])
+    }
+
     if data_name != 'ogbl-citation2':
-        result = get_metric_score(evaluator_hit, pos_test_pred, pos_valid_pred, neg_valid_pred, pos_test_pred, neg_test_pred)
+        result.update(get_metric_score(evaluator_hit, pos_test_pred, pos_valid_pred, neg_valid_pred, pos_test_pred, neg_test_pred))
     else:
         neg_test_pred = neg_test_pred.view(-1, 1000)
         neg_valid_pred = neg_valid_pred.view(-1, 1000)
-        result = get_metric_score_citation2(evaluator_mrr, pos_valid_pred, neg_valid_pred, pos_test_pred, neg_test_pred)
+        result.update(get_metric_score_citation2(evaluator_mrr, pos_valid_pred, neg_valid_pred, pos_test_pred, neg_test_pred))
     
     score_emb = [pos_valid_pred.cpu(), neg_valid_pred.cpu(), neg_test_pred.cpu(), pos_test_pred.cpu()]
 
@@ -465,11 +477,13 @@ def main():
     parser.add_argument('--metric', type=str, default='Hits@20')
     parser.add_argument('--device', type=int, default=4)
     parser.add_argument('--log_steps', type=int, default=1)
-    
+
     parser.add_argument('--gin_mlp_layer', type=int, default=2)
     parser.add_argument('--gat_head', type=int, default=1)
     parser.add_argument('--cat_node_feat_mf', default=False, action='store_true')
     parser.add_argument('--cat_n2v_feat', default=False, action='store_true')
+    parser.add_argument('--no_node_features', action='store_true', default=False,
+                        help='Use learnable embeddings instead of dataset node features')
 
     args = parser.parse_args()
     ogb_path = '~/ogb_data'
@@ -481,13 +495,10 @@ def main():
     node_num = data.num_nodes
     edge_index = data.edge_index
 
-    if hasattr(data, 'x'):
-        if data.x != None:
-            feature_embeddings = data.x.to(torch.float)
-        else:
-            feature_embeddings = torch.nn.Embedding(node_num, args.hidden_channels).to(device)
-    else:
+    if args.no_node_features or (not hasattr(data, 'x') or data.x is None):
         feature_embeddings = torch.nn.Embedding(node_num, args.hidden_channels).to(device)
+    else:
+        feature_embeddings = data.x.to(torch.float)
 
     if hasattr(data, 'edge_weight'):
         if data.edge_weight != None:
@@ -619,14 +630,18 @@ def main():
         loggers = {
             'Hits@20': Logger(args.runs),
             'Hits@50': Logger(args.runs),
-            'Hits@100': Logger(args.runs)  
+            'Hits@100': Logger(args.runs),
+            'AUC': Logger(args.runs),
+            'AP': Logger(args.runs)
         }
     else:
         loggers = {
             'MRR': Logger(args.runs),
             'mrr_hit20':  Logger(args.runs),
             'mrr_hit50':  Logger(args.runs),
-            'mrr_hit100':  Logger(args.runs)
+            'mrr_hit100':  Logger(args.runs),
+            'AUC': Logger(args.runs),
+            'AP': Logger(args.runs)
         }
 
     if args.data_name =='ogbl-collab':

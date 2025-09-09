@@ -50,4 +50,10 @@
      
 	When running the codes in Step 1 and Step 2, please follow the provided parameters in 'https://github.com/Juanhui28/HeaRT/tree/master/scripts/hyperparameters/existing_setting_ogb'. 
 
-	The score_number in Step 3 means the prediction results of base models in different seeds.
+        The score_number in Step 3 means the prediction results of base models in different seeds.
+
+4. Additional Options
+
+        The training script now reports AUC and AP in addition to the original evaluation metrics.
+        To ignore the dataset's node features and use learnable embeddings instead, add the flag
+        `--no_node_features` when running `main.py`.
